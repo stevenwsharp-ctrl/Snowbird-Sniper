@@ -80,6 +80,14 @@
   #lightbox img { max-width: 96vw; max-height: 90vh; }
   #lightbox.on { display: grid; }
   input[type=range] { width: 100%; accent-color: var(--accent); }
+  #nav { position: absolute; left: 50%; bottom: 28px; transform: translateX(calc(-50% - 190px)); z-index: 5; display: flex; gap: 6px; align-items: center;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; backdrop-filter: blur(8px); }
+  #nav button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: rgba(255,255,255,.05);
+    color: var(--text); font-size: 17px; cursor: pointer; }
+  #nav button:hover { border-color: var(--accent); }
+  #nav .sep { width: 1px; height: 24px; background: var(--line); }
+  #hint { position: absolute; left: 50%; bottom: 76px; transform: translateX(calc(-50% - 190px)); z-index: 5; font-size: 11px; color: var(--dim);
+    background: var(--bg); padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
 
   #readout { position: absolute; left: 16px; bottom: 30px; z-index: 5; background: var(--bg); border: 1px solid var(--line);
     border-radius: 8px; padding: 5px 10px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -94,6 +102,9 @@
     #views { top: 60px; left: 8px; right: 8px; max-width: none; }
     #brand { left: 10px; }
     #readout { bottom: auto; top: 108px; left: 8px; }
+    #nav { left: 50%; transform: translateX(-50%); bottom: auto; top: 140px; }
+    #nav button { width: 34px; height: 34px; }
+    #hint { display: none; }
   }
 </style>
 </head>
@@ -107,6 +118,19 @@
 
 <div id="views"></div>
 <div id="status">Loading terrain…</div>
+<div id="nav">
+  <button id="navLeft" title="Orbit left (← key)">⟲</button>
+  <button id="navRight" title="Orbit right (→ key)">⟳</button>
+  <span class="sep"></span>
+  <button id="navIn" title="Zoom in (+ key)">＋</button>
+  <button id="navOut" title="Zoom out (− key)">－</button>
+  <span class="sep"></span>
+  <button id="navUp" title="Tilt to see more horizon (↑ key)">⤒</button>
+  <button id="navDown" title="Tilt to look down (↓ key)">⤓</button>
+  <span class="sep"></span>
+  <button id="navHome" title="Back to the trail-map view (H key)">⌂</button>
+</div>
+<div id="hint">Drag to move · right-drag or Shift-drag to orbit and tilt · scroll to zoom · arrow keys orbit</div>
 <div id="lightbox"><img alt="Webcam"></div>
 <div id="readout">Move the cursor over the terrain</div>
 
@@ -141,10 +165,20 @@
         <button class="chip" id="satBtn" title="Daily satellite snow cover from NASA MODIS">Satellite snow</button>
       </div>
       <div class="note" id="satNote"></div>
+      <div style="margin-top:10px">
+        <div class="row"><span>Snow on the terrain</span><span id="snowLineVal"></span></div>
+        <div class="seg">
+          <button class="chip" data-snow="off">Off</button>
+          <button class="chip on" data-snow="now">Now (estimate)</button>
+          <button class="chip" data-snow="winter">Winter</button>
+        </div>
+        <input type="range" id="snowLine" min="6000" max="11500" step="100" value="10000" title="Snow line in feet">
+        <div class="note" id="snowCoverNote"></div>
+      </div>
     </section>
 
     <section>
-      <h2>Snow on the ground</h2>
+      <h2>Snow this season</h2>
       <div id="ground"><div class="note">Loading…</div></div>
     </section>
 
@@ -204,13 +238,15 @@
   const TZ = 'America/Denver';
   const M_TO_FT = 3.28084;
 
+  // Camera presets: a target on the mountain plus heading/pitch/range around it.
+  // Heading 180 = look south from the canyon, the same as the Snowbird trail map.
   const VIEWS = [
-    { name: 'Overview', lon: -111.663, lat: 40.622, h: 4400, heading: 172, pitch: -24 },
-    { name: 'Hidden Peak', lon: -111.648, lat: 40.578, h: 3750, heading: 205, pitch: -26 },
-    { name: 'Peruvian Gulch', lon: -111.640, lat: 40.596, h: 3350, heading: 215, pitch: -20 },
-    { name: 'Gad Valley', lon: -111.700, lat: 40.597, h: 3350, heading: 140, pitch: -20 },
-    { name: 'Mineral Basin', lon: -111.648, lat: 40.522, h: 3800, heading: 2, pitch: -22 },
-    { name: 'Top down', lon: -111.660, lat: 40.570, h: 7500, heading: 0, pitch: -90 },
+    { name: 'Trail map', lat: 40.5705, lon: -111.6575, alt: 2750, heading: 180, pitch: -32, range: 8200 },
+    { name: 'Hidden Peak', lat: 40.5608, lon: -111.6567, alt: 3300, heading: 190, pitch: -30, range: 2600 },
+    { name: 'Peruvian Gulch', lat: 40.5675, lon: -111.6470, alt: 2900, heading: 215, pitch: -30, range: 3800 },
+    { name: 'Gad Valley', lat: 40.5730, lon: -111.6720, alt: 2800, heading: 160, pitch: -30, range: 3800 },
+    { name: 'Mineral Basin', lat: 40.5540, lon: -111.6460, alt: 2950, heading: 5, pitch: -30, range: 4200 },
+    { name: 'Top down', lat: 40.5690, lon: -111.6580, alt: 2700, heading: 180, pitch: -89, range: 9000 },
   ];
 
   const DIFF = {
@@ -344,12 +380,15 @@
   $('sunBtn').onclick = () => setSun(!sunLive);
   setSun(false);
 
-  function fly(v, duration = 2.2) {
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.h),
-      orientation: { heading: toRad(v.heading), pitch: toRad(v.pitch), roll: 0 },
-      duration,
+  // ---------- Camera: presets, orbit, zoom, tilt ----------
+  const camera = viewer.camera;
+  function flyAround(target, heading, pitch, range, duration = 1.6) {
+    camera.flyToBoundingSphere(new Cesium.BoundingSphere(target, 1), {
+      offset: new Cesium.HeadingPitchRange(heading, pitch, range), duration,
     });
+  }
+  function fly(v, duration = 2) {
+    flyAround(Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.alt), toRad(v.heading), toRad(v.pitch), v.range, duration);
   }
   for (const v of VIEWS) {
     const b = el('button', { class: 'chip' }, v.name);
@@ -357,6 +396,43 @@
     $('views').append(b);
   }
   fly(VIEWS[0], 0);
+
+  // The point on the terrain at the screen centre is the orbit target.
+  function centerTarget() {
+    const c = new Cesium.Cartesian2(scene.canvas.clientWidth / 2, scene.canvas.clientHeight / 2);
+    const ray = camera.getPickRay(c);
+    return (ray && scene.globe.pick(ray, scene)) || Cesium.Cartesian3.fromDegrees(VIEWS[0].lon, VIEWS[0].lat, VIEWS[0].alt);
+  }
+  function orbit(dHeadingDeg = 0, dPitchDeg = 0, zoom = 1) {
+    const target = centerTarget();
+    const range = Math.min(40000, Math.max(400, Cesium.Cartesian3.distance(camera.positionWC, target) * zoom));
+    const pitch = Math.min(toRad(-8), Math.max(toRad(-89), camera.pitch + toRad(dPitchDeg)));
+    flyAround(target, camera.heading + toRad(dHeadingDeg), pitch, range, 0.7);
+  }
+  $('navLeft').onclick = () => orbit(-30);
+  $('navRight').onclick = () => orbit(30);
+  $('navIn').onclick = () => orbit(0, 0, 0.6);
+  $('navOut').onclick = () => orbit(0, 0, 1.6);
+  $('navUp').onclick = () => orbit(0, 8);
+  $('navDown').onclick = () => orbit(0, -8);
+  $('navHome').onclick = () => fly(VIEWS[0]);
+  window.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input, textarea')) return;
+    const k = { ArrowLeft: [-20], ArrowRight: [20], ArrowUp: [0, 6], ArrowDown: [0, -6], '+': [0, 0, 0.7], '=': [0, 0, 0.7], '-': [0, 0, 1.4], '_': [0, 0, 1.4] }[e.key];
+    if (k) { e.preventDefault(); orbit(...k); }
+    else if (e.key === 'h' || e.key === 'H') fly(VIEWS[0]);
+  });
+
+  // Mouse: left-drag moves, right-drag (or Shift/Ctrl-drag) orbits and tilts, wheel zooms.
+  const ctl = scene.screenSpaceCameraController;
+  const E = Cesium.CameraEventType, K = Cesium.KeyboardEventModifier;
+  ctl.rotateEventTypes = [E.LEFT_DRAG];
+  ctl.tiltEventTypes = [E.RIGHT_DRAG, E.MIDDLE_DRAG, E.PINCH, { eventType: E.LEFT_DRAG, modifier: K.SHIFT }, { eventType: E.LEFT_DRAG, modifier: K.CTRL }];
+  ctl.zoomEventTypes = [E.WHEEL, E.PINCH];
+  ctl.minimumZoomDistance = 250;
+  ctl.maximumZoomDistance = 60000;
+  ctl.enableCollisionDetection = true;
+  scene.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // Exaggeration
   $('exag').oninput = (e) => {
@@ -381,6 +457,58 @@
     $('readout').textContent = `${toDeg(c.latitude).toFixed(5)}, ${toDeg(c.longitude).toFixed(5)} · ${Math.round(h * M_TO_FT).toLocaleString()} ft`;
     hover(m.endPosition);
   }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  // ---------- Snow on the terrain ----------
+  // The satellite photo is from summer, so draw snow from elevation and slope.
+  // Very steep faces (cliffs) keep less snow. A small noise makes the edge patchy.
+  const snowMaterial = new Cesium.Material({
+    fabric: {
+      uniforms: { snowLine: 3050.0, fade: 120.0, coverage: 0.6 },
+      source: `
+        float powHash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+        czm_material czm_getMaterial(czm_materialInput materialInput) {
+          czm_material m = czm_getDefaultMaterial(materialInput);
+          float h = materialInput.height;
+          float n = powHash(floor(materialInput.st * 512.0)) - 0.5;
+          float cover = smoothstep(snowLine - fade, snowLine + fade, h + n * fade * 1.6);
+          cover *= 1.0 - smoothstep(0.70, 0.95, materialInput.slope);
+          m.diffuse = vec3(0.95, 0.97, 1.0);
+          m.alpha = clamp(cover * coverage, 0.0, 0.95);
+          return m;
+        }`,
+    },
+    translucent: true,
+  });
+  let snowMode = 'now', snowEstimate = { lineM: 3050, coverage: 0.0, why: 'Loading the snow data…' };
+  function applySnow() {
+    const u = snowMaterial.uniforms;
+    if (snowMode === 'off') { scene.globe.material = undefined; $('snowLineVal').textContent = ''; return; }
+    if (snowMode === 'winter') { u.snowLine = 1900; u.coverage = 0.9; }
+    if (snowMode === 'now') { u.snowLine = snowEstimate.lineM; u.coverage = snowEstimate.coverage; }
+    scene.globe.material = snowMaterial;
+    $('snowLine').value = Math.round(u.snowLine * M_TO_FT);
+    $('snowLineVal').textContent = u.coverage > 0 ? `snow line ${Math.round(u.snowLine * M_TO_FT).toLocaleString()} ft` : 'no snow';
+    $('snowCoverNote').textContent = snowMode === 'winter'
+      ? 'Winter look: full snow cover above 6,200 ft. This is not today’s snow.'
+      : snowEstimate.why;
+  }
+  document.querySelectorAll('[data-snow]').forEach((b) => {
+    b.onclick = () => {
+      snowMode = b.dataset.snow;
+      document.querySelectorAll('[data-snow]').forEach((x) => x.classList.toggle('on', x === b));
+      applySnow();
+    };
+  });
+  $('snowLine').oninput = (e) => {
+    const u = snowMaterial.uniforms;
+    u.snowLine = Number(e.target.value) / M_TO_FT;
+    if (u.coverage === 0) u.coverage = 0.7;
+    if (snowMode === 'off') { snowMode = 'now'; document.querySelector('[data-snow=now]').classList.add('on'); document.querySelector('[data-snow=off]').classList.remove('on'); }
+    scene.globe.material = snowMaterial;
+    $('snowLineVal').textContent = `snow line ${Math.round(u.snowLine * M_TO_FT).toLocaleString()} ft`;
+    $('snowCoverNote').textContent = 'Snow line set by hand.';
+  };
+  applySnow();
 
   // ---------- Runs and lifts (OpenStreetMap) ----------
   const runs = [];      // { id, name, diff, coords:[{lat,lon}], halo, line, top, bottom, aspect, elevM, powder }
@@ -717,7 +845,7 @@
   //      It matched the SNOTEL gauge better than the other models in Oct 2026 tests.
   // cal: factor that scales model snow so the model water matches the SNOTEL gauge.
   let wx = null, nbm = null, nbmName = 'NBM', cal = { f: 1, obs: null, mod: null };
-  let snotelDaily = null, snotelHourly = null, nws = { daily: null, snowLevelM: null, gridElevM: null };
+  let snotelDaily = null, snotelHourly = null, snotelStale = null, nws = { daily: null, snowLevelM: null, gridElevM: null };
   let powderInfo = '';
 
   const WMO = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog',
@@ -764,6 +892,7 @@
     renderSnow();
     renderDays();
     computePowder();
+    if (snotelDaily || snotelHourly) renderGround();
   }
 
   // Scale the model so its 30-day water total matches the SNOTEL gauge.
@@ -858,38 +987,67 @@
       for (const e of data?.[0]?.data || []) out[e.stationElement?.elementCode] = (e.values || []).filter((v) => v.value != null);
       return out;
     };
-    const [daily, hourly] = await Promise.all([
-      getJSON(q('DAILY', 31, 'SNWD,WTEQ,PREC')).then(parse).catch(() => null),
-      getJSON(q('HOURLY', 2, 'SNWD,WTEQ,TOBS')).then(parse).catch(() => null),
+    const get = (url) => getJSON(url).catch(() => new Promise((r) => setTimeout(r, 2500)).then(() => getJSON(url)));
+    let [daily, hourly] = await Promise.all([
+      get(q('DAILY', 31, 'SNWD,WTEQ,PREC')).then(parse).catch(() => null),
+      get(q('HOURLY', 2, 'SNWD,WTEQ,TOBS')).then(parse).catch(() => null),
     ]);
+    const saved = store.get('powline.snotel.v1');
+    if (daily?.SNWD?.length || hourly?.SNWD?.length) store.set('powline.snotel.v1', { t: Date.now(), daily, hourly });
+    else if (saved) { daily = saved.daily; hourly = saved.hourly; snotelStale = saved.t; }
     snotelDaily = daily; snotelHourly = hourly;
     renderGround();
     if (nbm) { calibrate(); renderSnow(); renderDays(); computePowder(); }
+  }
+
+  // Model snowfall since 1 October (the start of the snow year), corrected to the gauge.
+  function seasonSnow(loc) {
+    if (!nbm) return null;
+    const h = nbm[loc].hourly, i = nowIndex(h);
+    const now = new Date();
+    const y = now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1;
+    const start = `${y}-10-01`;
+    let tot = 0;
+    for (let k = 0; k <= i; k++) if (h.time[k] >= start) tot += h.snowfall[k] || 0;
+    return tot * cal.f;
+  }
+
+  // Estimate today's snow line for the terrain layer from the gauge and recent storms.
+  function estimateSnow(depthNow, series) {
+    const recent = series.slice(-14);
+    const peak14 = recent.reduce((m, v) => Math.max(m, v.value), 0);
+    const new72 = nbm ? modelSnow(0, 72) : 0;
+    if (depthNow >= 1) {
+      const lineM = Math.max(1900, SNOTEL.elevM - depthNow * 30);
+      return { lineM, coverage: Math.min(0.92, 0.55 + depthNow / 25),
+        why: `Estimate: ${fmt(depthNow)}" on the gauge at 9,177 ft, so snow covers the mountain above about ${Math.round(lineM * M_TO_FT).toLocaleString()} ft.` };
+    }
+    if (new72 >= 1) {
+      const lineM = nws.snowLevelM ? Math.min(3300, nws.snowLevelM) : 2900;
+      return { lineM, coverage: 0.7, why: `Estimate: ${fmt(new72, 1)}" of new snow at the summit in 72 h, above the snow level.` };
+    }
+    if (peak14 >= 3) {
+      return { lineM: 3050, coverage: 0.5,
+        why: `Estimate: the gauge is bare, but the ${fmt(peak14)}" storm snow is likely still patchy above about 10,000 ft, mostly on shaded slopes. Check the webcams in daylight and move the slider to match.` };
+    }
+    return { lineM: 3400, coverage: 0, why: 'Estimate: no recent snow on the gauge or in the model, so no snow is drawn. Use Winter or the slider to see snow.' };
   }
 
   function renderGround() {
     const hourly = snotelHourly;
     const box = clear($('ground'));
     const link = el('a', { href: 'https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=766', target: '_blank', rel: 'noopener' }, 'SNOTEL station page');
-    if (!snotelDaily?.SNWD?.length && !hourly?.SNWD?.length) {
-      box.append(el('div', { class: 'err' }, 'SNOTEL data did not load. '), link);
-      return;
-    }
-    const last = (s) => (s && s.length ? s.at(-1) : null);
+    const last = (x) => (x && x.length ? x.at(-1) : null);
     const depthNow = last(hourly?.SNWD) || last(snotelDaily?.SNWD);
-    const sweNow = last(hourly?.WTEQ) || last(snotelDaily?.WTEQ);
-    const tNow = last(hourly?.TOBS);
     const series = snotelDaily?.SNWD || [];
     const peak = series.reduce((m, v) => (v.value > (m?.value ?? -1) ? v : m), null);
-    const prec = snotelDaily?.PREC || [];
-    let water = 0;
-    for (let i = 1; i < prec.length; i++) water += Math.max(0, prec[i].value - prec[i - 1].value);
+    const sTop = seasonSnow(0), sBase = seasonSnow(1);
 
     box.append(el('div', { class: 'grid2' },
-      stat('Depth · 9,177 ft', `${fmt(depthNow?.value)}"`, depthNow ? `SNOTEL, ${depthNow.date.slice(5, 16)}` : ''),
-      stat('Water in snow (SWE)', `${fmt(sweNow?.value, 1)}"`, tNow ? `Air ${fmt(tNow.value)}°F` : ''),
-      stat('30-day peak depth', `${fmt(peak?.value)}"`, peak ? shortDate(peak.date.slice(0, 10)) : ''),
-      stat('30-day precipitation', `${fmt(water, 1)}"`, 'water, rain and snow'),
+      stat('Snowfall since Oct 1 · summit', sTop != null ? `${fmt(sTop)}"` : '…', `${nbmName} model${cal.f !== 1 ? ' × ' + cal.f.toFixed(2) + ' (gauge)' : ''}`),
+      stat('Snowfall since Oct 1 · base', sBase != null ? `${fmt(sBase)}"` : '…', '7,760 ft'),
+      stat('Storm peak depth · 9,177 ft', peak ? `${fmt(peak.value)}"` : '—', peak && peak.value > 0 ? `measured ${shortDate(peak.date.slice(0, 10))}` : 'measured'),
+      stat('Snow left · 9,177 ft', depthNow ? `${fmt(depthNow.value)}"` : '—', depthNow ? `measured ${depthNow.date.slice(5, 16)}` : 'gauge did not answer'),
     ));
 
     if (series.length) {
@@ -899,20 +1057,26 @@
         class: i === series.length - 1 ? 'today' : '',
         style: `height:${Math.round((v.value / max) * 100)}%`, title: `${v.date.slice(0, 10)}: ${v.value}"`,
       })));
-      box.append(bars, el('div', { class: 'axis' }, el('span', {}, shortDate(series[0].date.slice(0, 10))), el('span', {}, 'measured depth'), el('span', {}, 'today')));
+      box.append(bars, el('div', { class: 'axis' }, el('span', {}, shortDate(series[0].date.slice(0, 10))), el('span', {}, 'measured depth at 9,177 ft'), el('span', {}, 'today')));
     }
 
-    // Upper mountain: no gauge, so use the model snowpack and say so.
-    let summitTxt = '';
-    if (wx) {
-      const h = wx[0].hourly, i = nowIndex(h);
-      const sd = toIn(h.snow_depth?.[i], wx[0].hourly_units?.snow_depth);
-      if (sd != null) summitTxt = ` Model snowpack at the summit (11,000 ft): about ${fmt(sd)}".`;
+    // Plain explanation of why "snow left" can be 0 after a big storm.
+    let why = '';
+    if (peak && peak.value >= 3 && depthNow && depthNow.value <= peak.value / 3) {
+      let warm = '';
+      if (nbm) {
+        const d = nbm[1].daily, pk = peak.date.slice(0, 10);
+        const highs = d.time.map((t, i) => (t > pk && t <= utahDate(new Date()) ? d.temperature_2m_max[i] : null)).filter((v) => v != null);
+        if (highs.length) warm = ` Since then the base reached ${fmt(Math.max(...highs))}°F, so the snow melted fast.`;
+      }
+      why = `Snow has fallen this season — about ${sTop != null ? fmt(sTop) + '" at the summit' : 'a good amount'}. The gauge peaked at ${fmt(peak.value)}" on ${shortDate(peak.date.slice(0, 10))}.${warm} Today the gauge is bare. Snow stays longer on high, shaded slopes above about 10,000 ft. Resort snow stakes and the gauge measure depth now, not the storm total.`;
     }
-    const melt = peak && depthNow && peak.value >= 3 && depthNow.value <= peak.value / 3
-      ? ` The ${fmt(peak.value)}" from ${shortDate(peak.date.slice(0, 10))} has mostly melted at this elevation. North-facing slopes above 10,000 ft can keep snow longer — check the webcams in daylight.`
-      : '';
-    box.append(el('div', { class: 'note' }, `Measured at the NRCS gauge in Snowbird.${melt}${summitTxt} `, link));
+    if (snotelStale) why += ` Gauge data is from ${new Date(snotelStale).toLocaleString()} (the gauge did not answer now).`;
+    if (!series.length && !depthNow) why = 'The SNOTEL gauge did not answer. Press Refresh to try again.';
+    box.append(el('div', { class: 'note' }, why + ' ', link));
+
+    snowEstimate = estimateSnow(depthNow ? depthNow.value : 0, series);
+    applySnow();
   }
 
   function renderCams() {
