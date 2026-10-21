@@ -1,0 +1,46 @@
+name: Update runs and lifts
+
+# Downloads Snowbird runs, lifts and the resort boundary from OpenStreetMap
+# into runs.json, so the site does not depend on a public Overpass server.
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/update-runs.yml']
+  schedule:
+    - cron: '17 9 * * 1'   # Mondays, 09:17 UTC
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download from Overpass
+        run: |
+          QUERY='[out:json][timeout:90];
+          (way["landuse"="winter_sports"]["name"~"Snowbird"];relation["landuse"="winter_sports"]["name"~"Snowbird"];)->.b;
+          .b map_to_area->.a;
+          (way["piste:type"="downhill"](area.a);relation["piste:type"="downhill"](area.a);way["aerialway"](area.a););
+          out geom; .b out geom;'
+          for URL in https://overpass-api.de/api/interpreter \
+                     https://maps.mail.ru/osm/tools/overpass/api/interpreter \
+                     https://overpass.private.coffee/api/interpreter \
+                     https://overpass.kumi.systems/api/interpreter; do
+            echo "Trying $URL"
+            if curl -sS --fail --max-time 120 -A "snowbird-sniper (github.com/stevenwsharp-ctrl/Snowbird-Sniper)" \
+                 --data-urlencode "data=$QUERY" "$URL" -o new.json \
+               && python3 -c "import json,sys; d=json.load(open('new.json')); n=len(d['elements']); print(n,'elements'); sys.exit(0 if n>50 else 1)"; then
+              python3 -c "import json; d=json.load(open('new.json')); json.dump({'generated': d.get('osm3s',{}).get('timestamp_osm_base'), 'elements': d['elements']}, open('runs.json','w'), separators=(',',':'))"
+              rm new.json
+              exit 0
+            fi
+          done
+          echo "All Overpass servers failed"; exit 1
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add runs.json
+          git diff --cached --quiet || (git commit -m "Update runs.json from OpenStreetMap" && git push)

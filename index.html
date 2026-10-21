@@ -391,6 +391,15 @@
     const KEY = 'powline.osm.v2';
     const cached = store.get(KEY);
     if (cached && Date.now() - cached.t < 7 * 864e5) return cached.data;
+    // 1) The copy in this repository (a GitHub Action refreshes it each week).
+    try {
+      const local = await getJSON(`runs.json?d=${new Date().toISOString().slice(0, 10)}`, {}, 15000);
+      if (Array.isArray(local?.elements) && local.elements.length > 50) {
+        store.set(KEY, { t: Date.now(), data: local });
+        return local;
+      }
+    } catch { /* fall back to the public servers */ }
+    // 2) Public Overpass servers.
     // Only features inside the Snowbird resort boundary (this removes Alta).
     const q = `[out:json][timeout:40];
       (way["landuse"="winter_sports"]["name"~"Snowbird"];relation["landuse"="winter_sports"]["name"~"Snowbird"];)->.b;
