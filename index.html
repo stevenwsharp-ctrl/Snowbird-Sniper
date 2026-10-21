@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Powline · Snowbird</title>
+<script>window.CESIUM_BASE_URL = 'https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/';</script>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/Cesium.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cesium@1.124.0/Build/Cesium/Widgets/widgets.css">
+<style>
+  :root {
+    --bg: rgba(10, 16, 26, 0.86);
+    --line: rgba(255, 255, 255, 0.12);
+    --text: #e8eef6;
+    --dim: #8fa1b8;
+    --accent: #7dd3fc;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #05080d; color: var(--text);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; overflow: hidden; }
+  #globe { position: absolute; inset: 0; }
+  .cesium-viewer-bottom { opacity: 0.6; }
+  .cesium-widget-credits { font-size: 10px; }
+
+  #brand { position: absolute; top: 14px; left: 16px; z-index: 5; pointer-events: none; }
+  #brand h1 { margin: 0; font-size: 20px; letter-spacing: 0.04em; font-weight: 700; }
+  #brand h1 span { color: var(--accent); }
+  #brand p { margin: 2px 0 0; color: var(--dim); font-size: 12px; }
+
+  #views { position: absolute; top: 70px; left: 16px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; max-width: 360px; }
+  button.chip { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 12px; font-size: 12px; cursor: pointer; backdrop-filter: blur(8px); }
+  button.chip:hover { border-color: var(--accent); }
+  button.chip.on { background: var(--accent); color: #04121c; border-color: var(--accent); font-weight: 600; }
+
+  #panel { position: absolute; top: 14px; right: 14px; bottom: 14px; width: 360px; z-index: 6;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(12px);
+    display: flex; flex-direction: column; overflow: hidden; }
+  #panel header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  #panel header b { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+  #panelBody { overflow-y: auto; padding: 4px 14px 14px; }
+  #togglePanel { display: none; }
+  section { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  section:last-child { border-bottom: 0; }
+  section h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 8px 10px; }
+  .stat .k { font-size: 11px; color: var(--dim); }
+  .stat .v { font-size: 20px; font-weight: 650; }
+  .stat .s { font-size: 11px; color: var(--dim); }
+  .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; }
+  .row span:first-child { color: var(--dim); }
+  .note { color: var(--dim); font-size: 11px; margin-top: 6px; }
+  .err { color: var(--warn); font-size: 12px; }
+  a { color: var(--accent); }
+  .wind { display: flex; align-items: center; gap: 12px; }
+  .arrow { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 22px; }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; align-items: end; }
+  .day { text-align: center; font-size: 10px; color: var(--dim); }
+  .bar { background: linear-gradient(180deg, #e0f2fe, #38bdf8); border-radius: 4px 4px 0 0; margin: 0 auto 3px; width: 70%; min-height: 2px; }
+  .day b { display: block; color: var(--text); font-size: 11px; }
+  .danger { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 700; color: #111; }
+  .period { padding: 6px 0; border-top: 1px dashed var(--line); }
+  .period:first-child { border-top: 0; }
+  .period b { display: block; font-size: 12px; }
+  .period span { color: var(--dim); font-size: 12px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--dim); margin-top: 8px; }
+  .legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .seg { display: flex; gap: 6px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+
+  #readout { position: absolute; left: 16px; bottom: 30px; z-index: 5; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  #status { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); z-index: 7; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-size: 12px; color: var(--dim); }
+  #status:empty { display: none; }
+
+  @media (max-width: 760px) {
+    #panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 55vh; }
+    #panel.collapsed { max-height: 46px; }
+    #togglePanel { display: inline-block; }
+    #views { top: 60px; left: 8px; right: 8px; max-width: none; }
+    #brand { left: 10px; }
+    #readout { bottom: auto; top: 108px; left: 8px; }
+  }
+</style>
+</head>
+<body>
+<div id="globe"></div>
+
+<div id="brand">
+  <h1>POW<span>LINE</span> · Snowbird</h1>
+  <p>Real terrain · live conditions · Little Cottonwood Canyon, UT</p>
+</div>
+
+<div id="views"></div>
+<div id="status">Loading terrain…</div>
+<div id="readout">Move the cursor over the terrain</div>
+
+<aside id="panel">
+  <header>
+    <b>Conditions</b>
+    <span>
+      <button class="chip" id="refresh" title="Load the data again">↻ Refresh</button>
+      <button class="chip" id="togglePanel">▾</button>
+    </span>
+  </header>
+  <div id="panelBody">
+    <section id="secSelected" hidden>
+      <h2>Selected run</h2>
+      <div id="selected"></div>
+    </section>
+
+    <section>
+      <h2>Map</h2>
+      <div class="seg">
+        <button class="chip on" data-mode="difficulty">Difficulty</button>
+        <button class="chip" data-mode="powder">Powder estimate</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div style="margin-top:10px">
+        <div class="row"><span>Terrain exaggeration</span><span id="exagVal">1.0×</span></div>
+        <input type="range" id="exag" min="1" max="2" step="0.1" value="1">
+      </div>
+      <div class="seg" style="margin-top:8px">
+        <button class="chip" id="sunBtn">Sun: midday</button>
+        <button class="chip on" id="liftBtn">Lifts</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Now</h2>
+      <div class="grid2" id="now"><div class="note">Loading…</div></div>
+      <div class="wind" id="wind" style="margin-top:10px"></div>
+    </section>
+
+    <section>
+      <h2>New snow</h2>
+      <div class="grid2" id="snow"><div class="note">Loading…</div></div>
+      <div class="note" id="snowNote"></div>
+    </section>
+
+    <section>
+      <h2>SNOTEL · Snowbird (9,177 ft)</h2>
+      <div id="snotel"><div class="note">Loading…</div></div>
+    </section>
+
+    <section>
+      <h2>7-day snowfall (summit)</h2>
+      <div class="days" id="days"></div>
+    </section>
+
+    <section>
+      <h2>Avalanche · Salt Lake</h2>
+      <div id="avy"><div class="note">Loading…</div></div>
+    </section>
+
+    <section>
+      <h2>NWS forecast · Hidden Peak</h2>
+      <div id="nws"><div class="note">Loading…</div></div>
+    </section>
+
+    <section>
+      <h2>Sources</h2>
+      <div class="note">
+        Terrain: Re:Earth / Mapterhorn (CC BY 4.0), Esri fallback. Imagery: Esri World Imagery (not live, it can show summer).
+        Runs and lifts: © OpenStreetMap contributors (ODbL). Weather: Open-Meteo, NOAA NWS. Snow depth: USDA NRCS SNOTEL.
+        Avalanche: Utah Avalanche Center. Lift and run status: <a href="https://www.snowbird.com/mountain-report/" target="_blank" rel="noopener">snowbird.com</a>.
+        The powder estimate is a model, not a safety tool.
+      </div>
+    </section>
+  </div>
+</aside>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Constants ----------
+  const SUMMIT = { lat: 40.5608, lon: -111.6567, elevM: 3353, name: 'Hidden Peak' };
+  const BASE = { lat: 40.5830, lon: -111.6556, elevM: 2365, name: 'Snowbird Center' };
+  const BBOX = { s: 40.540, w: -111.705, n: 40.600, e: -111.628 };
+  const TZ = 'America/Denver';
+  const M_TO_FT = 3.28084;
+
+  const VIEWS = [
+    { name: 'Overview', lon: -111.663, lat: 40.622, h: 4400, heading: 172, pitch: -24 },
+    { name: 'Hidden Peak', lon: -111.648, lat: 40.578, h: 3750, heading: 205, pitch: -26 },
+    { name: 'Peruvian Gulch', lon: -111.640, lat: 40.596, h: 3350, heading: 215, pitch: -20 },
+    { name: 'Gad Valley', lon: -111.700, lat: 40.597, h: 3350, heading: 140, pitch: -20 },
+    { name: 'Mineral Basin', lon: -111.648, lat: 40.522, h: 3800, heading: 2, pitch: -22 },
+    { name: 'Top down', lon: -111.660, lat: 40.570, h: 7500, heading: 0, pitch: -90 },
+  ];
+
+  const DIFF = {
+    novice: { label: 'Beginner', color: '#22c55e' },
+    easy: { label: 'Easy', color: '#22c55e' },
+    intermediate: { label: 'Intermediate', color: '#3b82f6' },
+    advanced: { label: 'Advanced', color: '#0b0b0b' },
+    expert: { label: 'Expert', color: '#0b0b0b' },
+    freeride: { label: 'Freeride', color: '#f97316' },
+    extreme: { label: 'Extreme', color: '#ef4444' },
+    unknown: { label: 'Not rated', color: '#a3a3a3' },
+  };
+
+  const OVERPASS = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+  ];
+
+  // ---------- Small helpers ----------
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === 'class') n.className = v;
+      else if (k === 'style') n.style.cssText = v;
+      else n.setAttribute(k, v);
+    }
+    for (const kid of kids) if (kid != null) n.append(kid instanceof Node ? kid : String(kid));
+    return n;
+  };
+  const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); return n; };
+  const fmt = (v, d = 0) => (v == null || Number.isNaN(v) ? '—' : Number(v).toFixed(d));
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const compass = (deg) => ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'][Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+  const status = (t) => { $('status').textContent = t || ''; };
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage not available */ } },
+  };
+  async function getJSON(url, opts = {}, timeoutMs = 20000) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { ...opts, signal: ctl.signal });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } finally { clearTimeout(t); }
+  }
+  function bearing(a, b) {
+    const φ1 = toRad(a.lat), φ2 = toRad(b.lat), Δλ = toRad(b.lon - a.lon);
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    return (toDeg(Math.atan2(y, x)) + 360) % 360;
+  }
+  function distM(a, b) {
+    const R = 6371008.8, φ1 = toRad(a.lat), φ2 = toRad(b.lat);
+    const dφ = φ2 - φ1, dλ = toRad(b.lon - a.lon);
+    const h = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+
+  // ---------- Viewer ----------
+  const viewer = new Cesium.Viewer('globe', {
+    baseLayer: false,
+    animation: false, timeline: false, geocoder: false, homeButton: false,
+    sceneModePicker: false, baseLayerPicker: false, navigationHelpButton: false,
+    fullscreenButton: false, infoBox: false, selectionIndicator: false,
+    requestRenderMode: false,
+  });
+  const scene = viewer.scene;
+  scene.globe.depthTestAgainstTerrain = true;
+  scene.globe.enableLighting = true;
+  scene.globe.maximumScreenSpaceError = 1.5; // sharper terrain
+  scene.globe.tileCacheSize = 400;
+  scene.fog.density = 0.00012;
+  if (scene.skyAtmosphere) scene.skyAtmosphere.show = true;
+  viewer.imageryLayers.add(Cesium.ImageryLayer.fromProviderAsync(
+    Cesium.ArcGisMapServerImageryProvider.fromUrl(
+      'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer')));
+
+  let terrainReady;
+  async function loadTerrain() {
+    try {
+      const provider = await Cesium.CesiumTerrainProvider.fromUrl(
+        'https://terrain.reearth.land/cesium-mesh/ellipsoid', { requestVertexNormals: true });
+      viewer.terrainProvider = provider;
+      viewer.creditDisplay.addStaticCredit(new Cesium.Credit('Terrain: Re:Earth / Mapterhorn (CC BY 4.0)'));
+      return provider;
+    } catch (e) {
+      console.warn('Re:Earth terrain failed, trying Esri', e);
+      try {
+        const provider = await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl(
+          'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer');
+        viewer.terrainProvider = provider;
+        return provider;
+      } catch (e2) {
+        status('Terrain could not load. The map is flat.');
+        return viewer.terrainProvider;
+      }
+    }
+  }
+  terrainReady = loadTerrain().then((p) => { status(''); return p; });
+
+  // Sun: show midday light when it is dark in Utah, so the terrain is visible.
+  let sunLive = false;
+  function setSun(live) {
+    sunLive = live;
+    if (live) {
+      viewer.clock.currentTime = Cesium.JulianDate.now();
+      viewer.clock.shouldAnimate = true;
+      $('sunBtn').textContent = 'Sun: live';
+    } else {
+      const d = new Date();
+      const utahHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(d));
+      d.setTime(d.getTime() + (13 - utahHour) * 3600e3); // 1 pm Utah time today
+      viewer.clock.currentTime = Cesium.JulianDate.fromDate(d);
+      viewer.clock.shouldAnimate = false;
+      $('sunBtn').textContent = 'Sun: midday';
+    }
+  }
+  $('sunBtn').onclick = () => setSun(!sunLive);
+  setSun(false);
+
+  function fly(v, duration = 2.2) {
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(v.lon, v.lat, v.h),
+      orientation: { heading: toRad(v.heading), pitch: toRad(v.pitch), roll: 0 },
+      duration,
+    });
+  }
+  for (const v of VIEWS) {
+    const b = el('button', { class: 'chip' }, v.name);
+    b.onclick = () => fly(v);
+    $('views').append(b);
+  }
+  fly(VIEWS[0], 0);
+
+  // Exaggeration
+  $('exag').oninput = (e) => {
+    const x = Number(e.target.value);
+    scene.verticalExaggeration = x;
+    $('exagVal').textContent = `${x.toFixed(1)}×`;
+    redrawLifts();
+  };
+
+  // Cursor elevation readout
+  const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
+  let lastMove = 0;
+  handler.setInputAction((m) => {
+    const now = performance.now();
+    if (now - lastMove < 60) return;
+    lastMove = now;
+    const ray = viewer.camera.getPickRay(m.endPosition);
+    const p = ray && scene.globe.pick(ray, scene);
+    if (!p) return;
+    const c = Cesium.Cartographic.fromCartesian(p);
+    const h = c.height / (scene.verticalExaggeration || 1);
+    $('readout').textContent = `${toDeg(c.latitude).toFixed(5)}, ${toDeg(c.longitude).toFixed(5)} · ${Math.round(h * M_TO_FT).toLocaleString()} ft`;
+    hover(m.endPosition);
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  // ---------- Runs and lifts (OpenStreetMap) ----------
+  const runs = [];      // { id, name, diff, coords:[{lat,lon}], halo, line, top, bottom, aspect, elevM, powder }
+  const lifts = [];     // { name, coords, heights, entity, label }
+  let mapMode = 'difficulty';
+
+  async function loadOSM() {
+    const KEY = 'powline.osm.v1';
+    const cached = store.get(KEY);
+    if (cached && Date.now() - cached.t < 7 * 864e5) return cached.data;
+    const q = `[out:json][timeout:60];(
+      way["piste:type"="downhill"](${BBOX.s},${BBOX.w},${BBOX.n},${BBOX.e});
+      relation["piste:type"="downhill"](${BBOX.s},${BBOX.w},${BBOX.n},${BBOX.e});
+      way["aerialway"](${BBOX.s},${BBOX.w},${BBOX.n},${BBOX.e});
+    );out geom;`;
+    let lastErr;
+    for (const url of OVERPASS) {
+      try {
+        const data = await getJSON(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(q),
+        }, 45000);
+        if (!data || !Array.isArray(data.elements)) throw new Error('Bad response');
+        store.set(KEY, { t: Date.now(), data });
+        return data;
+      } catch (e) { lastErr = e; }
+    }
+    if (cached) return cached.data;
+    throw lastErr;
+  }
+
+  function runStyle(r) {
+    if (mapMode === 'powder') return { color: powderColor(r.powder), halo: '#0b1220' };
+    const d = DIFF[r.diff] || DIFF.unknown;
+    const halo = (r.diff === 'advanced' || r.diff === 'expert') ? (r.diff === 'expert' ? '#facc15' : '#ffffff') : '#ffffff';
+    return { color: d.color, halo };
+  }
+
+  function addRun(id, tags, geometry) {
+    const coords = (geometry || []).filter(Boolean).map((g) => ({ lat: g.lat, lon: g.lon }));
+    if (coords.length < 2) return;
+    const r = {
+      id, name: tags.name || tags['piste:name'] || 'Unnamed run',
+      diff: (tags['piste:difficulty'] || 'unknown').toLowerCase(),
+      grooming: tags['piste:grooming'] || null,
+      isArea: tags.area === 'yes' || (coords.length > 3 && coords[0].lat === coords.at(-1).lat && coords[0].lon === coords.at(-1).lon),
+      coords,
+    };
+    const positions = Cesium.Cartesian3.fromDegreesArray(coords.flatMap((c) => [c.lon, c.lat]));
+    const s = runStyle(r);
+    r.halo = viewer.entities.add({
+      polyline: { positions, width: 7, clampToGround: true, zIndex: 0,
+        material: Cesium.Color.fromCssColorString(s.halo).withAlpha(0.75) },
+    });
+    r.line = viewer.entities.add({
+      polyline: { positions, width: 3.5, clampToGround: true, zIndex: 1,
+        material: Cesium.Color.fromCssColorString(s.color) },
+    });
+    r.line.powlineRun = r; r.halo.powlineRun = r;
+    runs.push(r);
+  }
+
+  function restyleRuns() {
+    for (const r of runs) {
+      const s = runStyle(r);
+      r.line.polyline.material = Cesium.Color.fromCssColorString(s.color);
+      r.halo.polyline.material = Cesium.Color.fromCssColorString(s.halo).withAlpha(0.75);
+    }
+    drawLegend();
+  }
+
+  async function sampleHeights(cartos) {
+    const provider = await terrainReady;
+    let hs = null;
+    try {
+      const out = await Cesium.sampleTerrainMostDetailed(provider, cartos.map((c) => c.clone()));
+      hs = out.map((c) => c.height);
+    } catch { /* use the fixed level below */ }
+    if (!hs || hs.some((h) => h == null || Number.isNaN(h))) {
+      const out = await Cesium.sampleTerrain(provider, 13, cartos.map((c) => c.clone()));
+      hs = out.map((c, i) => (c.height ?? hs?.[i] ?? 0));
+    }
+    return hs;
+  }
+
+  function redrawLifts() {
+    const ex = scene.verticalExaggeration || 1;
+    for (const l of lifts) {
+      if (!l.heights) continue;
+      l.entity.polyline.positions = Cesium.Cartesian3.fromDegreesArrayHeights(
+        l.coords.flatMap((c, i) => [c.lon, c.lat, l.heights[i] * ex + 14]));
+      const top = l.coords.at(-1);
+      l.label.position = Cesium.Cartesian3.fromDegrees(top.lon, top.lat, l.heights.at(-1) * ex + 40);
+    }
+  }
+
+  async function addLifts(ways) {
+    for (const w of ways) {
+      const coords = (w.geometry || []).map((g) => ({ lat: g.lat, lon: g.lon }));
+      if (coords.length < 2) continue;
+      const type = w.tags.aerialway;
+      if (!['chair_lift', 'gondola', 'cable_car', 'mixed_lift', 't-bar', 'drag_lift', 'platter', 'rope_tow', 'magic_carpet'].includes(type)) continue;
+      const name = w.tags.name || type.replace('_', ' ');
+      const isTram = type === 'cable_car';
+      const entity = viewer.entities.add({
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray(coords.flatMap((c) => [c.lon, c.lat])),
+          width: isTram ? 3.5 : 2.5,
+          clampToGround: true,
+          material: new Cesium.PolylineDashMaterialProperty({
+            color: Cesium.Color.fromCssColorString(isTram ? '#f43f5e' : '#fde047'),
+            gapColor: Cesium.Color.BLACK.withAlpha(0.6), dashLength: 14,
+          }),
+        },
+      });
+      const top = coords.at(-1);
+      const label = viewer.entities.add({
+        position: Cesium.Cartesian3.fromDegrees(top.lon, top.lat, 0),
+        label: {
+          text: name, font: '600 12px Inter, system-ui, sans-serif',
+          fillColor: Cesium.Color.WHITE, outlineColor: Cesium.Color.BLACK, outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE, pixelOffset: new Cesium.Cartesian2(0, -10),
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scaleByDistance: new Cesium.NearFarScalar(1500, 1.0, 15000, 0.55),
+          translucencyByDistance: new Cesium.NearFarScalar(12000, 1.0, 22000, 0.0),
+        },
+      });
+      lifts.push({ name, type, coords, entity, label });
+    }
+    // Sample lift tower heights, then lift the cable off the ground.
+    const all = lifts.flatMap((l) => l.coords.map((c) => Cesium.Cartographic.fromDegrees(c.lon, c.lat)));
+    if (!all.length) return;
+    const hs = await sampleHeights(all);
+    let i = 0;
+    for (const l of lifts) {
+      l.heights = l.coords.map(() => hs[i++]);
+      l.entity.polyline.clampToGround = false;
+      l.label.label.heightReference = Cesium.HeightReference.NONE;
+    }
+    redrawLifts();
+  }
+
+  $('liftBtn').onclick = (e) => {
+    const on = !e.target.classList.contains('on');
+    e.target.classList.toggle('on', on);
+    for (const l of lifts) { l.entity.show = on; l.label.show = on; }
+  };
+
+  async function analyseRuns() {
+    // Top and bottom height of each run gives fall-line aspect and elevation.
+    const pts = [];
+    for (const r of runs) {
+      const mid = r.coords[Math.floor(r.coords.length / 2)];
+      pts.push(r.coords[0], mid, r.coords.at(-1));
+    }
+    const hs = await sampleHeights(pts.map((c) => Cesium.Cartographic.fromDegrees(c.lon, c.lat)));
+    runs.forEach((r, i) => {
+      const [h0, hm, h1] = hs.slice(i * 3, i * 3 + 3);
+      const a = r.coords[0], b = r.coords.at(-1);
+      const [top, bot] = h0 >= h1 ? [a, b] : [b, a];
+      r.aspect = bearing(top, bot); // direction the slope faces (downhill)
+      r.elevM = hm ?? (h0 + h1) / 2;
+      r.topM = Math.max(h0, h1);
+      r.botM = Math.min(h0, h1);
+    });
+    computePowder();
+  }
+
+  async function buildMap() {
+    status('Loading runs and lifts…');
+    let data;
+    try { data = await loadOSM(); }
+    catch (e) { status('Runs could not load from OpenStreetMap. Press Refresh to try again.'); return; }
+    const drawn = new Set();
+    const wayEls = data.elements.filter((x) => x.type === 'way');
+    for (const w of wayEls) {
+      if (w.tags && w.tags['piste:type'] === 'downhill') { addRun(`w${w.id}`, w.tags, w.geometry); drawn.add(w.id); }
+    }
+    for (const rel of data.elements.filter((x) => x.type === 'relation')) {
+      for (const m of rel.members || []) {
+        if (m.type === 'way' && !drawn.has(m.ref) && m.geometry) { addRun(`r${rel.id}-${m.ref}`, rel.tags || {}, m.geometry); drawn.add(m.ref); }
+      }
+    }
+    await addLifts(wayEls.filter((w) => w.tags && w.tags.aerialway));
+    status('');
+    await analyseRuns();
+    drawLegend();
+  }
+
+  // ---------- Hover and select ----------
+  let hovered = null;
+  function hover(pos) {
+    const picked = scene.pick(pos);
+    const r = picked && picked.id && picked.id.powlineRun;
+    if (r === hovered) return;
+    if (hovered && hovered !== selectedRun) hovered.line.polyline.width = 3.5;
+    hovered = r || null;
+    if (hovered) hovered.line.polyline.width = 6;
+    scene.canvas.style.cursor = hovered ? 'pointer' : 'default';
+  }
+
+  let selectedRun = null;
+  handler.setInputAction(async (c) => {
+    const picked = scene.pick(c.position);
+    const r = picked && picked.id && picked.id.powlineRun;
+    if (!r) return;
+    if (selectedRun) selectedRun.line.polyline.width = 3.5;
+    selectedRun = r;
+    r.line.polyline.width = 6;
+    await showRun(r);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  function densify(coords, stepM = 20) {
+    const out = [coords[0]];
+    for (let i = 1; i < coords.length; i++) {
+      const a = coords[i - 1], b = coords[i];
+      const d = distM(a, b), n = Math.max(1, Math.ceil(d / stepM));
+      for (let k = 1; k <= n; k++) out.push({ lat: a.lat + (b.lat - a.lat) * k / n, lon: a.lon + (b.lon - a.lon) * k / n });
+    }
+    return out;
+  }
+
+  async function showRun(r) {
+    $('secSelected').hidden = false;
+    $('panel').classList.remove('collapsed');
+    const box = clear($('selected'));
+    box.append(el('div', { class: 'note' }, 'Measuring the run on the terrain…'));
+    const pts = densify(r.isArea ? r.coords.slice(0, -1) : r.coords, 20);
+    const hs = await sampleHeights(pts.map((p) => Cesium.Cartographic.fromDegrees(p.lon, p.lat)));
+    let horiz = 0, len3d = 0, maxSlope = 0;
+    const seg = [];
+    for (let i = 1; i < pts.length; i++) {
+      const d = distM(pts[i - 1], pts[i]);
+      horiz += d;
+      len3d += Math.hypot(d, hs[i] - hs[i - 1]);
+      seg.push({ d, dh: hs[i] - hs[i - 1] });
+    }
+    // Steepest pitch over a ~50 m window
+    for (let i = 0; i < seg.length; i++) {
+      let d = 0, dh = 0;
+      for (let j = i; j < seg.length && d < 50; j++) { d += seg[j].d; dh += seg[j].dh; }
+      if (d >= 40) maxSlope = Math.max(maxSlope, toDeg(Math.atan(Math.abs(dh) / d)));
+    }
+    const top = Math.max(...hs), bot = Math.min(...hs);
+    const drop = top - bot;
+    const avgSlope = toDeg(Math.atan(drop / Math.max(horiz, 1)));
+    const d = DIFF[r.diff] || DIFF.unknown;
+
+    clear(box);
+    box.append(
+      el('div', { style: 'font-size:17px;font-weight:650;margin-bottom:2px' }, r.name),
+      el('div', { class: 'note', style: 'margin:0 0 8px' }, `${d.label}${r.grooming ? ' · grooming: ' + r.grooming : ''}${r.isArea ? ' · area outline' : ''}`),
+      el('div', { class: 'grid2' },
+        stat('Vertical drop', `${Math.round(drop * M_TO_FT).toLocaleString()} ft`),
+        stat('Length', `${(len3d * M_TO_FT / 5280).toFixed(2)} mi`),
+        stat('Average pitch', `${fmt(avgSlope)}°`),
+        stat('Steepest pitch', `${fmt(maxSlope)}°`, '50 m window'),
+        stat('Top', `${Math.round(top * M_TO_FT).toLocaleString()} ft`),
+        stat('Aspect', r.aspect != null ? `${compass(r.aspect)}` : '—', r.aspect != null ? `${Math.round(r.aspect)}° downhill` : ''),
+      ),
+      el('div', { class: 'row', style: 'margin-top:8px' }, el('span', {}, 'Powder estimate'),
+        el('span', {}, r.powder != null ? `${fmt(r.powder, 1)} in` : '—')),
+      el('div', { class: 'note' }, 'Pitch comes from the terrain model (about 10–30 m detail). Short steep parts can be steeper than shown.'),
+    );
+  }
+
+  function stat(k, v, s) {
+    return el('div', { class: 'stat' }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, v), s ? el('div', { class: 's' }, s) : null);
+  }
+
+  // ---------- Map mode + legend ----------
+  document.querySelectorAll('[data-mode]').forEach((b) => {
+    b.onclick = () => {
+      mapMode = b.dataset.mode;
+      document.querySelectorAll('[data-mode]').forEach((x) => x.classList.toggle('on', x === b));
+      restyleRuns();
+    };
+  });
+
+  const POWDER_STOPS = [
+    [0, '#64748b'], [1, '#93c5fd'], [3, '#38bdf8'], [6, '#22d3ee'], [10, '#e879f9'], [14, '#ffffff'],
+  ];
+  function powderColor(v) {
+    if (v == null) return '#64748b';
+    let c = POWDER_STOPS[0][1];
+    for (const [t, col] of POWDER_STOPS) if (v >= t) c = col;
+    return c;
+  }
+
+  function drawLegend() {
+    const L = clear($('legend'));
+    if (mapMode === 'difficulty') {
+      for (const k of ['easy', 'intermediate', 'advanced', 'expert', 'freeride']) {
+        const swatch = el('i', { style: `background:${DIFF[k].color};outline:1px solid ${k === 'expert' ? '#facc15' : '#fff'}` });
+        L.append(el('span', {}, swatch, DIFF[k].label));
+      }
+      L.append(el('span', {}, el('i', { style: 'background:#fde047' }), 'Lift'), el('span', {}, el('i', { style: 'background:#f43f5e' }), 'Tram'));
+    } else {
+      const labels = ['0', '1"+', '3"+', '6"+', '10"+', '14"+'];
+      POWDER_STOPS.forEach(([, c], i) => L.append(el('span', {}, el('i', { style: `background:${c}` }), labels[i])));
+      if (powderInfo) L.append(el('div', { style: 'width:100%' }, powderInfo));
+    }
+  }
+
+  // ---------- Conditions ----------
+  let wx = null;          // Open-Meteo response pair [summit, base]
+  let powderInfo = '';
+
+  async function loadWeather() {
+    const p = new URLSearchParams({
+      latitude: `${SUMMIT.lat},${BASE.lat}`, longitude: `${SUMMIT.lon},${BASE.lon}`, elevation: `${SUMMIT.elevM},${BASE.elevM}`,
+      current: 'temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,snowfall',
+      hourly: 'snowfall,wind_speed_10m,wind_direction_10m,freezing_level_height',
+      daily: 'snowfall_sum,temperature_2m_max,temperature_2m_min,weather_code',
+      past_days: '3', forecast_days: '7',
+      temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', precipitation_unit: 'inch', timezone: TZ,
+    });
+    const data = await getJSON(`https://api.open-meteo.com/v1/forecast?${p}`);
+    wx = Array.isArray(data) ? data : [data, data];
+    renderWeather();
+    computePowder();
+  }
+
+  const WMO = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Rime fog',
+    51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle', 56: 'Freezing drizzle', 57: 'Freezing drizzle',
+    61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain',
+    71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains', 80: 'Rain showers', 81: 'Rain showers',
+    82: 'Heavy showers', 85: 'Snow showers', 86: 'Heavy snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm, hail', 99: 'Thunderstorm, hail' };
+
+  function hourIndex(w) {
+    const t = w.hourly.time, now = w.current.time.slice(0, 13);
+    let i = t.findIndex((x) => x.slice(0, 13) === now);
+    if (i < 0) i = t.length - 1;
+    return i;
+  }
+  function sumSnow(w, hours) {
+    const i = hourIndex(w), s = w.hourly.snowfall;
+    let tot = 0;
+    for (let k = Math.max(0, i - hours + 1); k <= i; k++) tot += s[k] || 0;
+    return tot;
+  }
+
+  function renderWeather() {
+    const [top, bot] = wx;
+    const now = clear($('now'));
+    now.append(
+      stat(`Summit · ${Math.round(SUMMIT.elevM * M_TO_FT).toLocaleString()} ft`, `${fmt(top.current.temperature_2m)}°F`, `Feels ${fmt(top.current.apparent_temperature)}° · ${WMO[top.current.weather_code] || ''}`),
+      stat(`Base · ${Math.round(BASE.elevM * M_TO_FT).toLocaleString()} ft`, `${fmt(bot.current.temperature_2m)}°F`, `Feels ${fmt(bot.current.apparent_temperature)}° · ${WMO[bot.current.weather_code] || ''}`),
+    );
+    const dir = top.current.wind_direction_10m;
+    const fl = top.hourly.freezing_level_height?.[hourIndex(top)];
+    clear($('wind')).append(
+      el('div', { class: 'arrow', style: `transform:rotate(${dir + 180}deg)` }, '↑'),
+      el('div', {},
+        el('div', { style: 'font-size:16px;font-weight:650' }, `${fmt(top.current.wind_speed_10m)} mph from ${compass(dir)}`),
+        el('div', { class: 'note', style: 'margin:0' }, `Gusts ${fmt(top.current.wind_gusts_10m)} mph at the summit${fl != null ? ` · freezing level ${Math.round(fl * M_TO_FT).toLocaleString()} ft` : ''}`)),
+    );
+    const snow = clear($('snow'));
+    snow.append(
+      stat('24 h · summit', `${fmt(sumSnow(top, 24), 1)}"`, `base ${fmt(sumSnow(bot, 24), 1)}"`),
+      stat('72 h · summit', `${fmt(sumSnow(top, 72), 1)}"`, `base ${fmt(sumSnow(bot, 72), 1)}"`),
+    );
+    $('snowNote').textContent = 'Model values (Open-Meteo). Compare with the SNOTEL depth change below, which is a measurement.';
+
+    const days = clear($('days'));
+    const ds = top.daily;
+    const today = top.current.time.slice(0, 10);
+    const start = Math.max(0, ds.time.indexOf(today));
+    const slice = ds.time.slice(start, start + 7);
+    const max = Math.max(1, ...ds.snowfall_sum.slice(start, start + 7));
+    slice.forEach((t, i) => {
+      const v = ds.snowfall_sum[start + i] || 0;
+      const name = new Date(t + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+      days.append(el('div', { class: 'day' },
+        el('div', { class: 'bar', style: `height:${Math.round((v / max) * 60) + 2}px` }),
+        el('b', {}, `${fmt(v, 1)}"`), name,
+        el('div', {}, `${fmt(ds.temperature_2m_max[start + i])}°/${fmt(ds.temperature_2m_min[start + i])}°`)));
+    });
+  }
+
+  async function loadSnotel() {
+    const box = $('snotel');
+    const fmtD = (d) => d.toISOString().slice(0, 10);
+    const end = new Date(Date.now() + 864e5), begin = new Date(Date.now() - 4 * 864e5);
+    const url = 'https://wcc.sc.egov.usda.gov/awdbRestApi/services/v1/data?' + new URLSearchParams({
+      stationTriplets: '766:UT:SNTL', elements: 'SNWD,WTEQ,TOBS', duration: 'HOURLY',
+      beginDate: fmtD(begin), endDate: fmtD(end), returnFlags: 'false',
+    });
+    try {
+      const data = await getJSON(url);
+      const els = data?.[0]?.data || [];
+      const series = (code) => (els.find((e) => e.stationElement?.elementCode === code)?.values || []).filter((v) => v.value != null);
+      const snwd = series('SNWD'), swe = series('WTEQ'), tobs = series('TOBS');
+      if (!snwd.length && !swe.length) throw new Error('No values');
+      const last = (s) => s.at(-1);
+      const ago = (s, h) => {
+        const l = last(s); if (!l) return null;
+        const target = new Date(l.date.replace(' ', 'T')).getTime() - h * 3600e3;
+        let best = null;
+        for (const v of s) if (new Date(v.date.replace(' ', 'T')).getTime() <= target) best = v;
+        return best;
+      };
+      const change = (s, h) => { const a = ago(s, h), l = last(s); return a && l ? l.value - a.value : null; };
+      clear(box).append(
+        el('div', { class: 'grid2' },
+          stat('Snow depth', `${fmt(last(snwd)?.value)}"`, last(snwd) ? `at ${last(snwd).date.slice(5)}` : ''),
+          stat('Water in snow (SWE)', `${fmt(last(swe)?.value, 1)}"`),
+          stat('Depth change 24 h', `${change(snwd, 24) != null ? (change(snwd, 24) >= 0 ? '+' : '') + fmt(change(snwd, 24)) : '—'}"`),
+          stat('Air temp', `${fmt(last(tobs)?.value)}°F`),
+        ),
+        el('div', { class: 'note' }, 'Measured at the NRCS station in Snowbird. Settlement can make the depth change smaller than the new snow. ',
+          el('a', { href: 'https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=766', target: '_blank', rel: 'noopener' }, 'Station page')),
+      );
+    } catch (e) {
+      clear(box).append(el('div', { class: 'err' }, 'SNOTEL data did not load in the browser. '),
+        el('a', { href: 'https://wcc.sc.egov.usda.gov/nwcc/site?sitenum=766', target: '_blank', rel: 'noopener' }, 'Open the station page'));
+    }
+  }
+
+  const DANGER_COLOR = { low: '#4ade80', moderate: '#facc15', considerable: '#fb923c', high: '#ef4444', extreme: '#111' };
+  function plainText(html) {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+    return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  async function loadAvy() {
+    const box = $('avy');
+    const link = el('a', { href: 'https://utahavalanchecenter.org/forecast/salt-lake', target: '_blank', rel: 'noopener' }, 'Read the full forecast');
+    try {
+      const data = await getJSON('https://utahavalanchecenter.org/forecast/salt-lake/json');
+      const adv = data?.advisories?.[0]?.advisory;
+      if (!adv) throw new Error('No advisory');
+      const rating = plainText(adv.overall_danger_rating || 'Not rated');
+      const key = rating.toLowerCase().split(/\s/)[0];
+      const bottom = plainText(adv.bottom_line);
+      clear(box).append(
+        el('div', { style: 'margin-bottom:6px' },
+          el('span', { class: 'danger', style: `background:${DANGER_COLOR[key] || '#94a3b8'};${key === 'extreme' ? 'color:#fff' : ''}` }, rating),
+          el('span', { class: 'note', style: 'margin-left:8px' }, plainText(adv.date_issued))),
+        bottom ? el('div', { style: 'font-size:12px' }, bottom.length > 420 ? bottom.slice(0, 420) + '…' : bottom) : null,
+        el('div', { class: 'note' }, link),
+      );
+    } catch {
+      clear(box).append(el('div', { class: 'note', style: 'margin:0 0 4px' }, 'The forecast did not load in the browser (the season may not have started).'), link);
+    }
+  }
+
+  async function loadNWS() {
+    const box = $('nws');
+    try {
+      const pt = await getJSON(`https://api.weather.gov/points/${SUMMIT.lat},${SUMMIT.lon}`, { headers: { Accept: 'application/geo+json' } });
+      const fc = await getJSON(pt.properties.forecast, { headers: { Accept: 'application/geo+json' } });
+      clear(box);
+      for (const p of fc.properties.periods.slice(0, 4)) {
+        box.append(el('div', { class: 'period' },
+          el('b', {}, `${p.name} · ${p.temperature}°${p.temperatureUnit}`),
+          el('span', {}, p.detailedForecast)));
+      }
+    } catch {
+      clear(box).append(el('div', { class: 'err' }, 'The NWS forecast did not load. '),
+        el('a', { href: `https://forecast.weather.gov/MapClick.php?lat=${SUMMIT.lat}&lon=${SUMMIT.lon}`, target: '_blank', rel: 'noopener' }, 'Open on weather.gov'));
+    }
+  }
+
+  // ---------- Powder estimate ----------
+  // Fresh snow (weighted to the most recent) × elevation × wind loading on lee aspects.
+  function computePowder() {
+    if (!wx || !runs.length || runs.some((r) => r.aspect == null)) { drawLegend(); return; }
+    const top = wx[0], bot = wx[1];
+    const s24 = sumSnow(top, 24), s48 = sumSnow(top, 48), s72 = sumSnow(top, 72);
+    const fresh = s24 + 0.6 * (s48 - s24) + 0.35 * (s72 - s48);
+    const b24 = sumSnow(bot, 24), b48 = sumSnow(bot, 48), b72 = sumSnow(bot, 72);
+    const freshBase = b24 + 0.6 * (b48 - b24) + 0.35 * (b72 - b48);
+
+    // Wind during the snow, as a weighted vector mean.
+    const i = hourIndex(top);
+    let u = 0, v = 0, wsum = 0, spd = 0;
+    for (let k = Math.max(0, i - 47); k <= i; k++) {
+      const w = (top.hourly.snowfall[k] || 0) + 0.02;
+      const d = toRad(top.hourly.wind_direction_10m[k]);
+      u += Math.sin(d) * w; v += Math.cos(d) * w;
+      spd += (top.hourly.wind_speed_10m[k] || 0) * w; wsum += w;
+    }
+    const windFrom = (toDeg(Math.atan2(u, v)) + 360) % 360;
+    const windSpd = spd / wsum;
+    const lee = (windFrom + 180) % 360;
+    const strength = Math.min(1, Math.max(0, (windSpd - 8) / 20));
+
+    for (const r of runs) {
+      const t = Math.min(1, Math.max(0, (r.elevM - BASE.elevM) / (SUMMIT.elevM - BASE.elevM)));
+      const base = freshBase + (fresh - freshBase) * t;
+      const load = 1 + 0.7 * strength * Math.cos(toRad(r.aspect - lee));
+      const coldNorth = 1 + 0.12 * Math.cos(toRad(r.aspect));
+      r.powder = Math.max(0, base * load * coldNorth);
+    }
+    powderInfo = fresh < 0.5
+      ? 'Little or no new snow in the last 72 h, so all runs show gray.'
+      : `Wind during the snow: ${Math.round(windSpd)} mph from ${compass(windFrom)}. Lee slopes facing ${compass(lee)} get more snow. Trees and lift traffic are not in the model.`;
+    if (mapMode === 'powder') restyleRuns(); else drawLegend();
+  }
+
+  // ---------- Load everything ----------
+  async function loadConditions() {
+    const tasks = [
+      loadWeather().catch(() => {
+        clear($('now')).append(el('div', { class: 'err' }, 'Weather data did not load. Press Refresh.'));
+        clear($('snow'));
+      }),
+      loadSnotel(), loadAvy(), loadNWS(),
+    ];
+    await Promise.all(tasks);
+  }
+  $('refresh').onclick = () => { loadConditions(); if (!runs.length) buildMap(); };
+  $('togglePanel').onclick = () => $('panel').classList.toggle('collapsed');
+  setInterval(loadConditions, 15 * 60e3);
+
+  drawLegend();
+  buildMap();
+  loadConditions();
+})();
+</script>
+</body>
+</html>
